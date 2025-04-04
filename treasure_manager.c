@@ -53,15 +53,37 @@ void add_treasure(char *hunt_id)
   else 
     treasure_fd=open(treasure_path, O_WRONLY | O_APPEND);
 
-  write(treasure_fd,&t.id,4*sizeof(char));
-  write(treasure_fd,&t.user_name,4*sizeof(char));
+  write(treasure_fd,t.id,4*sizeof(char));
+  write(treasure_fd,t.user_name,4*sizeof(char));
   write(treasure_fd,&t.coordinates.latitude,sizeof(float));
   write(treasure_fd,&t.coordinates.longitude,sizeof(float));
-  write(treasure_fd,&t.clue,100*sizeof(char));
+  write(treasure_fd,t.clue,100*sizeof(char));
   write(treasure_fd,&t.value,sizeof(unsigned int));
 	
   close(treasure_fd);
 
+}
+
+void list_hunt(char *hunt_id)
+{
+  char paths[15]="./";
+  struct stat file_desc_obj;
+
+  strcat(paths,hunt_id);
+  
+  if(stat(paths,&file_desc_obj)==-1 && errno==ENOENT){
+  	printf("There is no such hunt.Hmmm...Must've been the wind\n");
+ 	return;
+  }
+  strcat(paths,"/treasure");
+  if(stat(paths,&file_desc_obj)==-1 && errno==ENOENT){
+	printf("Oopsie daisy there is no treasure here.....damn.....so empty....\n");
+	return;
+  }
+
+  printf("Hunt name:%s\n",hunt_id);
+  printf("Size of treasure:%ld doubloons\n",file_desc_obj.st_size);
+  printf("Last time it was discovered:%ld(im not gonna format this :p)\n",file_desc_obj.st_mtime);
 }
 
 int main(int argc,char **argv)
@@ -73,6 +95,7 @@ int main(int argc,char **argv)
   char *op = argv[1];
   switch(op[2]){
 	case 'a':{ add_treasure(argv[2]); break;}
+	case 'l':{ list_hunt(argv[2]); break;}
  }
   return 0;
 }
