@@ -6,6 +6,14 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#define E_NOH 0xFA //error no hunt
+#define E_NOT 0xFB //error no treasure
+#define E_CRPF 0xA0 //error closing file
+#define E_MKDIR 0xC0 //error when making the hunt dir
+#define E_FDG 0x40 //group for file descriptor opening errors
+#define E_FWG 0x60 //group for file descriptor writing errors
+#define E_FRG 0x80 //group for file descriptor reading errors
+
 typedef struct{
   float latitude,longitude;
 }coord;
@@ -22,8 +30,11 @@ void add_treasure(char *hunt_id)
 {
   char hunt_path[50]="./";
   char treasure_path[59]="./";
+  char log_path[59]="./";
+  char log_message[10]="--add ";
   struct stat file_desc_obj;
   int treasure_fd;
+  int log;
   treasure t;
   char fuck_c;
 
@@ -31,10 +42,15 @@ void add_treasure(char *hunt_id)
   strcat(treasure_path,hunt_id);
   strcat(treasure_path,"/");
   strcat(treasure_path,"treasure");
+  strcat(log_path,hunt_id);
+  strcat(log_path,"/log");
+  strcat(log_message,hunt_id);
 
   if(stat(hunt_path,&file_desc_obj)==-1 && errno==ENOENT){
       mkdir(hunt_path,0777);
   }
+
+  errno=0;
 
   printf("Input treasure id:");
   scanf("%3s",t.id);
@@ -52,164 +68,311 @@ void add_treasure(char *hunt_id)
   scanf("%u",&t.value);
 
   if(stat(treasure_path,&file_desc_obj)==-1 && errno==ENOENT)
-    treasure_fd=open(treasure_path, O_WRONLY | O_CREAT, 0777);
+    {
+	treasure_fd=open(treasure_path, O_WRONLY | O_CREAT, 0777);
+	log=open(log_path, O_WRONLY | O_CREAT, 0777);
+    }
   else 
-    treasure_fd=open(treasure_path, O_WRONLY | O_APPEND);
+    {
+	treasure_fd=open(treasure_path, O_WRONLY | O_APPEND);
+	log=open(log_path, O_WRONLY | O_APPEND);
+    }	
 
-  write(treasure_fd,t.id,4*sizeof(char));
-  write(treasure_fd,t.user_name,4*sizeof(char));
-  write(treasure_fd,&t.coordinates.latitude,sizeof(float));
-  write(treasure_fd,&t.coordinates.longitude,sizeof(float));
-  write(treasure_fd,t.clue,100*sizeof(char));
-  write(treasure_fd,&t.value,sizeof(unsigned int));
-	
+
+  errno=0;   
+
+  if(errno!=0){
+	printf("Error while opening file:%s\n",treasure_path);
+	exit(E_FDG | errno);
+  }
+
+  write(treasure_fd,t.id,4*sizeof(char)); if(errno != 0){printf("Error while writing to file\n"); exit(E_FWG | errno);}
+  write(treasure_fd,t.user_name,4*sizeof(char)); if(errno != 0) {printf("Error while writing to file\n"); exit(E_FWG | errno);}
+  write(treasure_fd,&t.coordinates.latitude,sizeof(float)); if(errno != 0) {printf("Error while writing to file\n"); exit(E_FWG | errno);}
+  write(treasure_fd,&t.coordinates.longitude,sizeof(float)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+  write(treasure_fd,t.clue,100*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+  write(treasure_fd,&t.value,sizeof(unsigned int)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+  write(log,log_message,10*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+
   close(treasure_fd);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
+  close(log);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
 
 }
 
 void list_hunt(char *hunt_id)
 {
   char paths[59]="./";
+  char log_path[59]="./";
+  char log_message[11]="--list ";
+  int treasure_fd;
+  int log;
   struct stat file_desc_obj;
 
   strcat(paths,hunt_id);
+  strcat(log_path,hunt_id);
+  strcat(log_path,"/log");
+  strcat(log_message,hunt_id);
   
   if(stat(paths,&file_desc_obj)==-1 && errno==ENOENT){
   	printf("There is no such hunt.Hmmm...Must've been the wind\n");
- 	return;
+ 	exit(E_NOH);
   }
   strcat(paths,"/treasure");
   if(stat(paths,&file_desc_obj)==-1 && errno==ENOENT){
 	printf("Oopsie daisy there is no treasure here.....damn.....so empty....\n");
-	return;
+	exit(E_NOT);
   }
 
   printf("Hunt name:%s\n",hunt_id);
   printf("Size of treasure:%ld doubloons\n",file_desc_obj.st_size);
   printf("Last time it was discovered:%ld(im not gonna format this :p)\n------------------------------------------------------------------\n",file_desc_obj.st_mtim.tv_sec);
 
-  int treasure_fd = open(paths,O_RDONLY);  
+  treasure_fd = open(paths,O_RDONLY); 
+  if(errno!=0){
+	printf("Error while opening file:%s\n",paths);
+        exit(E_FDG | errno);
+  } 
+
+  log=open(log_path, O_WRONLY | O_APPEND);
+  if(errno!=0){
+	printf("Error while opening file:%s\n",paths);
+        exit(E_FDG | errno);
+  } 
 
   treasure t;
   while(read(treasure_fd,t.id,4*sizeof(char))) 
   {
-	read(treasure_fd,t.user_name,4*sizeof(char));
-	read(treasure_fd,&t.coordinates.latitude,sizeof(float));
-	read(treasure_fd,&t.coordinates.longitude,sizeof(float));
-	read(treasure_fd,t.clue,100*sizeof(char));
-	read(treasure_fd,&t.value,sizeof(unsigned int));
+	if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,t.user_name,4*sizeof(char)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,&t.coordinates.latitude,sizeof(float)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,&t.coordinates.longitude,sizeof(float)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,t.clue,100*sizeof(char)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,&t.value,sizeof(unsigned int)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
 
 	printf("Treasure id:%s\nTreasure owner:%s\nTreasure coordinates:(%f,%f)\nTreasure clue:%s\nTreasure value:%u\n\n",t.id,t.user_name,t.coordinates.latitude,t.coordinates.longitude,t.clue,t.value);
   }
+
+  write(log,log_message,11*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
  
   close(treasure_fd);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
+  
+  close(log);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
 }
 
 void view_treasure(char *hunt_id,char *id){
 
   char paths[59]="./";
+  char log_path[59]="./";
+  char log_message[24]="--view_treasure ";
+  int treasure_fd;
+  int log;
   struct stat file_desc_obj;
 
   strcat(paths,hunt_id);
+  strcat(log_path,hunt_id);
+  strcat(log_path,"/log");
+  strcat(log_path,hunt_id);
+  strcat(log_path," ");
+  strcat(log_path,id);
   
   if(stat(paths,&file_desc_obj)==-1 && errno==ENOENT){
   	printf("There is no such hunt.Hmmm...Must've been the wind\n");
- 	return;
+ 	exit(E_NOH);
   }
   strcat(paths,"/treasure");
   if(stat(paths,&file_desc_obj)==-1 && errno==ENOENT){
 	printf("Oopsie daisy there is no treasure here.....damn.....so empty....\n");
-	return;
+	exit(E_NOT);
   }
   
-  int treasure_fd = open(paths,O_RDONLY);  
+  treasure_fd = open(paths,O_RDONLY);
+  if(errno!=0){
+	printf("Error while opening file:%s\n",paths);
+	exit(E_FDG | errno);
+  }
+
+  log=open(log_path,O_WRONLY | O_APPEND);
+  if(errno!=0){
+	printf("Error while opening file:%s\n",paths);
+	exit(E_FDG | errno);
+  }
 
   treasure t;
   while(read(treasure_fd,t.id,4*sizeof(char))) 
   {
-	read(treasure_fd,t.user_name,4*sizeof(char));
-	read(treasure_fd,&t.coordinates.latitude,sizeof(float));
-	read(treasure_fd,&t.coordinates.longitude,sizeof(float));
-	read(treasure_fd,t.clue,100*sizeof(char));
-	read(treasure_fd,&t.value,sizeof(unsigned int));
+	if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,t.user_name,4*sizeof(char)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,&t.coordinates.latitude,sizeof(float)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,&t.coordinates.longitude,sizeof(float)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,t.clue,100*sizeof(char)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(treasure_fd,&t.value,sizeof(unsigned int)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
         
 	if(!strcmp(t.id,id))
   		printf("Treasure id:%s\nTreasure owner:%s\nTreasure coordinates:(%f,%f)\nTreasure clue:%s\nTreasure value:%u\n\n",t.id,t.user_name,t.coordinates.latitude,t.coordinates.longitude,t.clue,t.value);
   }
+
+  write(log,log_message,24*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
  
   close(treasure_fd);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
+  
+  close(log);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
 }
 
 void remove_hunt(char *hunt_id)
 {
   char hunt_path[50]="./";
   char treasure_path[59]="./";
+  char log_path[59]="./";
   struct stat file_desc_obj;
 
   strcat(hunt_path,hunt_id);
   strcat(treasure_path,hunt_id);
   strcat(treasure_path,"/treasure");
+  strcat(log_path,hunt_id);
+  strcat(log_path,"/log");
  
   if(stat(hunt_path,&file_desc_obj)==-1 && errno==ENOENT){
   	printf("There is no such hunt.Hmmm...Must've been the wind\n");
- 	return;
+ 	exit(E_NOH);
   }
 
+  unlink(log_path);
   unlink(treasure_path);
   unlinkat(AT_FDCWD,hunt_path,AT_REMOVEDIR);
-  
+
 }
 
 void remove_treasure(char *hunt_id,char *treasure_id)
 {
   
   char paths[59]="./";
+  char log_path[59]="./";
+  char log_message[26]="--remove_treasure ";
+  int fd;
+  int log;
   struct stat file_desc_obj;
 
   strcat(paths,hunt_id);
-  
+  strcat(log_path,hunt_id);
+  strcat(log_path,"/log");
+  strcat(log_message,hunt_id);
+  strcat(log_message," ");
+  strcat(log_message,treasure_id);  
+
   if(stat(paths,&file_desc_obj)==-1 && errno==ENOENT){
   	printf("There is no such hunt.Hmmm...Must've been the wind\n");
- 	return;
+ 	exit(E_NOH);
   }
   strcat(paths,"/treasure");
   if(stat(paths,&file_desc_obj)==-1 && errno==ENOENT){
 	printf("Oopsie daisy there is no treasure here.....damn.....so empty....\n");
-	return;
+	exit(E_NOT);
   }
   
   treasure *wanted_treasure = (treasure *)malloc(file_desc_obj.st_size);
+  if(wanted_treasure == NULL){
+	printf("Error when deleting treasure\n");
+	exit(-4 | errno);
+  }
 
-  int fd = open(paths,O_RDONLY);
+  fd = open(paths,O_RDONLY);
+
+  if(errno!=0){
+	printf("Error while opening file:%s\n",paths);
+	exit(E_FDG | errno);
+  }  
+
   int treasure_index=0;
 
   while(read(fd,wanted_treasure[treasure_index].id,4*sizeof(char)))
-  {
-	read(fd,wanted_treasure[treasure_index].user_name,4*sizeof(char));
-	read(fd,&wanted_treasure[treasure_index].coordinates.latitude,sizeof(float));
-	read(fd,&wanted_treasure[treasure_index].coordinates.longitude,sizeof(float));
-	read(fd,wanted_treasure[treasure_index].clue,100*sizeof(char));
-	read(fd,&wanted_treasure[treasure_index].value,sizeof(unsigned int));
+  {	
+	if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(fd,wanted_treasure[treasure_index].user_name,4*sizeof(char)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(fd,&wanted_treasure[treasure_index].coordinates.latitude,sizeof(float)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(fd,&wanted_treasure[treasure_index].coordinates.longitude,sizeof(float)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(fd,wanted_treasure[treasure_index].clue,100*sizeof(char)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
+	read(fd,&wanted_treasure[treasure_index].value,sizeof(unsigned int)); if(errno!= 0) { printf("Error while reading from file\n"); exit(E_FRG | errno);}
 	treasure_index++;
   }
   
   close(fd);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
+
   unlink(paths);
   fd = open(paths,O_WRONLY | O_CREAT, 0777);
 
+  if(errno!=0){
+	printf("Error while opening file:%s\n",paths);
+	exit(E_FDG | errno);
+  }
+
+  log=open(paths,O_WRONLY | O_APPEND);
+
+  if(errno!=0){
+	printf("Error while opening file:%s\n",paths);
+	exit(E_FDG | errno);
+  }
   for(unsigned int i=0;i<treasure_index;i++)
   {
 	if(strcmp(wanted_treasure[i].id,treasure_id)!=0){
-		write(fd,wanted_treasure[i].id,4*sizeof(char));
-		write(fd,wanted_treasure[i].user_name,4*sizeof(char));
-		write(fd,&wanted_treasure[i].coordinates.latitude,sizeof(float));
-		write(fd,&wanted_treasure[i].coordinates.longitude,sizeof(float));
-		write(fd,wanted_treasure[i].clue,100*sizeof(char));
-  		write(fd,&wanted_treasure[i].value,sizeof(unsigned int));
+		write(fd,wanted_treasure[i].id,4*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+		write(fd,wanted_treasure[i].user_name,4*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+		write(fd,&wanted_treasure[i].coordinates.latitude,sizeof(float)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+		write(fd,&wanted_treasure[i].coordinates.longitude,sizeof(float)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+		write(fd,wanted_treasure[i].clue,100*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+  		write(fd,&wanted_treasure[i].value,sizeof(unsigned int)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
 	}
   }
+
+  write(log,log_message,26*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
   
   close(fd);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
+  
+  close(log);
+  if(errno!=0)
+  {
+	printf("Error while closing file\n");
+	exit(E_CRPF | errno);
+  }
   free(wanted_treasure);
 }
 
