@@ -32,11 +32,13 @@ void add_treasure(char *hunt_id)
   char treasure_path[59]="./";
   char log_path[59]="./";
   char log_message[10]="--add ";
+  char check_id[4];
   struct stat file_desc_obj;
   int treasure_fd;
   int log;
+  int treasure_idx=1;
   treasure t;
-  char fuck_c;
+  char buffer_headache;
 
   strcat(hunt_path,hunt_id);
   strcat(treasure_path,hunt_id);
@@ -54,13 +56,13 @@ void add_treasure(char *hunt_id)
 
   printf("Input treasure id:");
   scanf("%3s",t.id);
-  while((fuck_c=getchar())!='\n') {}
+  while((buffer_headache=getchar())!='\n') {}
   printf("Input treaure owner:");
   scanf("%3s",t.user_name);
-  while((fuck_c=getchar())!='\n') {}
+  while((buffer_headache=getchar())!='\n') {}
   printf("Input treasure coordinates:");
   scanf("%f %f",&t.coordinates.latitude,&t.coordinates.longitude);
-  while((fuck_c=getchar())!='\n') {}
+  while((buffer_headache=getchar())!='\n') {}
   printf("Input treasure clue:");
   fgets(t.clue,100,stdin);
   t.clue[strlen(t.clue)-1]='\0';
@@ -74,10 +76,24 @@ void add_treasure(char *hunt_id)
     }
   else 
     {
-	treasure_fd=open(treasure_path, O_WRONLY | O_APPEND);
-	log=open(log_path, O_WRONLY | O_APPEND);
-    }	
+	treasure_fd=open(treasure_path, O_RDWR | O_APPEND);
+	log=open(log_path, O_WRONLY | O_APPEND );
 
+	lseek(treasure_fd,4,SEEK_SET);
+
+	while(read(treasure_fd,check_id,4*sizeof(char)))
+	{
+		
+		if(!strcmp(check_id,t.user_name))
+		{
+			printf("Treasure wasnt added:same user.You have already deposited a treasure here, go get a life %s\n",t.user_name);
+			return;
+		}
+		lseek(treasure_fd,treasure_idx*120+4,SEEK_SET);
+		treasure_idx++;
+	}
+    }
+  lseek(treasure_fd,0,SEEK_SET);
 
   errno=0;   
 
