@@ -32,9 +32,9 @@ void add_treasure(char *hunt_id)
   char hunt_path[50]="./";
   char treasure_path[59]="./";
   char log_path[59]="./";
-  char log_message[11]="--add ";
+  char log_message[89]="--add ";
   char check_id[4];
-  char symlink_log_name[7]="log";
+  char symlink_log_name[59]="log";
   struct stat file_desc_obj;
   int treasure_fd;
   int log;
@@ -49,7 +49,6 @@ void add_treasure(char *hunt_id)
   strcat(log_path,hunt_id);
   strcat(log_path,"/log");
   strcat(log_message,hunt_id);
-  strcat(log_message,"\n");
   strcat(symlink_log_name,hunt_id);
 
   if(stat(hunt_path,&file_desc_obj)==-1 && errno==ENOENT){
@@ -113,7 +112,14 @@ void add_treasure(char *hunt_id)
   write(treasure_fd,&t.coordinates.longitude,sizeof(float)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
   write(treasure_fd,t.clue,100*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
   write(treasure_fd,&t.value,sizeof(unsigned int)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
-  write(log,log_message,11*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+
+  strcat(log_message," tid:");
+  strcat(log_message,t.id);
+  strcat(log_message," u:");
+  strcat(log_message,t.user_name);
+  strcat(log_message,"\n");
+
+  write(log,log_message,89*sizeof(char)); if(errno != 0) {printf("Error while writing to file\n"); exit(E_FWG | errno);}
 
   close(treasure_fd);
   if(errno!=0)
@@ -134,7 +140,7 @@ void list_hunt(char *hunt_id)
 {
   char paths[59]="./";
   char log_path[59]="./";
-  char log_message[12]="--list ";
+  char log_message[61]="--list ";
   int treasure_fd;
   int log;
   struct stat file_desc_obj;
@@ -184,7 +190,7 @@ void list_hunt(char *hunt_id)
 	printf("Treasure id:%s\nTreasure owner:%s\nTreasure coordinates:(%f,%f)\nTreasure clue:%s\nTreasure value:%u\n\n",t.id,t.user_name,t.coordinates.latitude,t.coordinates.longitude,t.clue,t.value);
   }
 
-  write(log,log_message,12*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+  write(log,log_message,61*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
  
   close(treasure_fd);
   if(errno!=0)
@@ -205,7 +211,7 @@ void view_treasure(char *hunt_id,char *id){
 
   char paths[59]="./";
   char log_path[59]="./";
-  char log_message[25]="--view_treasure ";
+  char log_message[84]="--view_treasure ";
   int treasure_fd;
   int log;
   struct stat file_desc_obj;
@@ -257,7 +263,7 @@ void view_treasure(char *hunt_id,char *id){
   		printf("Treasure id:%s\nTreasure owner:%s\nTreasure coordinates:(%f,%f)\nTreasure clue:%s\nTreasure value:%u\n\n",t.id,t.user_name,t.coordinates.latitude,t.coordinates.longitude,t.clue,t.value);
   }
 
-  write(log,log_message,25*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+  write(log,log_message,84*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
  
   close(treasure_fd);
   if(errno!=0)
@@ -279,7 +285,7 @@ void remove_hunt(char *hunt_id)
   char hunt_path[50]="./";
   char treasure_path[59]="./";
   char log_path[59]="./";
-  char log_message[22]="--remove_hunt";
+  char log_message[81]="--remove_hunt";
   char linked_log_path[7]="log";
   struct stat file_desc_obj;
   int log;
@@ -306,7 +312,7 @@ void remove_hunt(char *hunt_id)
 	exit(E_FDG | errno);
   }
   
-  write(log,log_message,22*sizeof(char));  if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+  write(log,log_message,81*sizeof(char));  if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
   if(errno!=0)
   {
 	printf("Error while closing file\n");
@@ -325,7 +331,7 @@ void remove_treasure(char *hunt_id,char *treasure_id)
   
   char paths[59]="./";
   char log_path[59]="./";
-  char log_message[27]="--remove_treasure ";
+  char log_message[86]="--remove_treasure ";
   int fd;
   int log;
   struct stat file_desc_obj;
@@ -407,7 +413,7 @@ void remove_treasure(char *hunt_id,char *treasure_id)
 	}
   }
 
-  write(log,log_message,27*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
+  write(log,log_message,86*sizeof(char)); if(errno != 0) {printf("Error while riting to file\n"); exit(E_FWG | errno);}
   
   close(fd);
   if(errno!=0)
@@ -428,11 +434,11 @@ void remove_treasure(char *hunt_id,char *treasure_id)
 void help()
 {
   printf("Usage:./treasure_manager --<op> <*args>\n\n");
-  printf("./treasure_manager --add <hunt_id>:{Adds one treasure to the selected hunt.If there is no such hunt one will be created}\n");
-  printf("./treasure_manager --list <hunt_id>:{Prints the id, size and last time of modification of the selected hunt, then prints all the treasure inside. If there is no such hunt or there is no treasure inside, an appropiate message will be displayed}\n");
-  printf("./treasure_manager --view_treasure <hunt_id> <treasure_id>:{Prints all of the treasures with the selected id from the selected hunt.  If there is no such hunt or there is no treasure inside, an appropiate message will be displayed}\n");
-  printf("./treasure_manager --remove_hunt <hunt_id>:{Removes the selected hunt if it exists}\n");
-  printf("./treasure_manager --remove_treasure <hunt_id> <treasure_id>:{Removes the selected treasure fromt the selected hunt.  If there is no such hunt or there is no treasure inside, an appropiate message will be displayed}\n}");
+  printf("./treasure_manager --add <hunt_id>:{Adds one treasure to the selected hunt.If there is no such hunt one will be created}\n\n");
+  printf("./treasure_manager --list <hunt_id>:{Prints the id, size and last time of modification of the selected hunt, then prints all the treasure inside. If there is no such hunt or there is no treasure inside, an appropiate message will be displayed}\n\n");
+  printf("./treasure_manager --view_treasure <hunt_id> <treasure_id>:{Prints all of the treasures with the selected id from the selected hunt.  If there is no such hunt or there is no treasure inside, an appropiate message will be displayed}\n\n");
+  printf("./treasure_manager --remove_hunt <hunt_id>:{Removes the selected hunt if it exists}\n\n");
+  printf("./treasure_manager --remove_treasure <hunt_id> <treasure_id>:{Removes the selected treasure fromt the selected hunt.  If there is no such hunt or there is no treasure inside, an appropiate message will be displayed}\n\n}");
   printf("----------------------------------------------------------------------------------------------------------------------------------------------------\n");
 }
 
