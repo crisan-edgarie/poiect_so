@@ -4,34 +4,140 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
+#include <sys/stat.h>
 
-#define PWD_SIZE 513
+#define PWD_SIZE 257
+#define SIG_C_EVENT_1 SIGUSR1+24 //view hunts sig
+#define SIG_C_EVENT_2 SIGUSR1+25 //list treasures sig
+#define SIG_C_EVENT_3 SIGUSR1+26 //view treasure sig
 
-void stop_monitor_process(int num)
+unsigned int monitor_on=0;
+
+void view_hunts(int num)
+{
+	char root[257];
+	char channel_path[513];
+	
+	struct stat file_desc_obj;
+	
+	printf("miaumiau\n");
+}
+
+void list_treasure(int num)
+{
+
+	char process_cmd[127]="./";
+	char hunt_id[50]="";
+	char buffer_headache=0;	
+
+	printf("Input hunt from which to list treasures:");
+	scanf("%49s",hunt_id);
+	while((buffer_headache=getchar())!='\n') {}
+
+	printf("\n");
+	
+	strcat(process_cmd,"treasure_manager --list ");
+	strcat(process_cmd,hunt_id);
+
+	system(process_cmd);
+
+	usleep(150);
+
+	kill(getppid(),SIGUSR1);
+	
+}
+
+void view_treasure(int num)
+{
+	char process_cmd[140]="./";
+	char hunt_id[50]="";
+	char treasure_id[4]="";
+	char buffer_headache=0;
+
+	printf("Input hunt from which to list treasures:");
+	scanf("%49s",hunt_id);
+	while((buffer_headache=getchar())!='\n') {}
+	printf("Input treasure id to be viewed:");
+	scanf("%3s",treasure_id);
+	while((buffer_headache=getchar())!='\n') {}
+
+	printf("\n");
+
+	strcat(process_cmd,"treasure_manager --view_treasure ");
+	strcat(process_cmd,hunt_id);
+	strcat(process_cmd," ");
+	strcat(process_cmd,treasure_id);
+
+	system(process_cmd);
+	
+	usleep(150);
+
+	kill(getppid(),SIGUSR1);
+}
+
+void stop_monitor(int num)
 {
 	wait();
-	printf("Monitor clossing\n");
+	sleep(4);
+	printf("Monitor clossing...\n");
 	exit(0);
 }
 
 void arm_monitor_h2h()
 {
-	struct sigaction stop_monitor_sa;
-	stop_monitor_sa.sa_handler = stop_monitor_process;
+	struct sigaction view_hunts_sa,list_treasures_sa,view_treasure_sa,stop_monitor_sa;
 	
-	sigaction(SIGUSR1,&stop_monitor_sa, NULL);
+	view_hunts_sa.sa_handler = view_hunts;
+	list_treasures_sa.sa_handler = list_treasure;
+	view_treasure_sa.sa_handler = view_treasure;
+	stop_monitor_sa.sa_handler = stop_monitor;
+	
+	sigaction(SIG_C_EVENT_1,&view_hunts_sa, NULL);
+	sigaction(SIG_C_EVENT_2,&list_treasures_sa, NULL);
+	sigaction(SIG_C_EVENT_3,&view_treasure_sa, NULL);
+	sigaction(SIGUSR2,&stop_monitor_sa, NULL);
 }
 
-void stop_monitor(int c_pid)
+void send_view_hunts(int c_pid)
 {
-	int zombie_pid=0;
-	kill(c_pid,SIGUSR1);
-	int status;
+	kill(c_pid,SIG_C_EVENT_1);
+}
 
+void send_list_treasures(int c_pid)
+{
+	kill(c_pid,SIG_C_EVENT_2);
+}
+
+void send_view_treasure(int c_pid)
+{
+	kill(c_pid,SIG_C_EVENT_3);
+}
+
+void send_stop_monitor(int c_pid)
+{
+	int status,zombie_pid=0;
+
+	kill(c_pid,SIGUSR2);
+	
 	zombie_pid=wait(&status);
 	
 	if(zombie_pid==-1)
 		errno=status|0x0C00;
+}
+
+//function that will be used only as a handler for a signal that is sent from to monitor telling main to regain focus from stdin
+void return_focus()
+{
+	return;
+}
+
+void arm_hub_h2h()
+{
+	struct sigaction await_focus_sa;
+
+	await_focus_sa.sa_handler = return_focus;
+
+	sigaction(SIGUSR1,&await_focus_sa,NULL);
 }
 
 int main(int argc, char **argv)
@@ -45,8 +151,6 @@ int main(int argc, char **argv)
 
 	while(1)
 	{
-
-	printf("Id pt pfiecare process:%d",slave_pid);
 	
 	switch(slave_pid){
 		
@@ -79,12 +183,12 @@ int main(int argc, char **argv)
 				{
 					using_hub_cmd = 1;
 					switch(i){
-						case 0: {slave_pid=fork(); if(!slave_pid) arm_monitor_h2h(); break; }
-						case 1: break;
-						case 2: break;
-						case 3: break;
-						case 4: {stop_monitor(slave_pid); break; }
-						case 5: {printf("gata\n"); exit(0); break; }
+						case 0: {if(!monitor_on) {slave_pid=fork(); if(!slave_pid) arm_monitor_h2h(); else if(slave_pid!=-1){monitor_on=1; arm_hub_h2h(); }} else printf("Monitor already on...\n"); break; }
+						case 1: {if(monitor_on) send_view_hunts(slave_pid); else printf("The monitor has to be started before using any hub function...\n"); break;}
+						case 2: {if(monitor_on) {send_list_treasures(slave_pid); pause();} else printf("The monitor has to be started before using any hub function...\n"); break;}
+						case 3: {if(monitor_on) {send_view_treasure(slave_pid); pause();} else printf("The monitor has to be started before using any hub function...\n"); break;}
+						case 4: {if(monitor_on) {monitor_on=0; send_stop_monitor(slave_pid);} else printf("The monitor has to be started before using any hub function...\n"); break; }
+						case 5: {if(monitor_on) printf("Monitor process forcefully stopped. Errors may have occured!\n"); monitor_on=0; kill(slave_pid,SIGKILL); printf("gata\n"); exit(0); break; }
 					}
 					break;
 				}
