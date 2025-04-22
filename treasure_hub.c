@@ -4,7 +4,10 @@
 #include <unistd.h>
 #include <errno.h>
 #include <signal.h>
+#include <sys/types.h>
 #include <sys/stat.h>
+#include <dirent.h>
+
 
 #define PWD_SIZE 257
 #define SIG_C_EVENT_1 SIGUSR1+24 //view hunts sig
@@ -15,12 +18,53 @@ unsigned int monitor_on=0;
 
 void view_hunts(int num)
 {
-	char root[257];
-	char channel_path[513];
-	
+	char channel_path[PWD_SIZE+512];
+	char cwd[PWD_SIZE]="";
+
+	unsigned int is_hunts=0;
+
 	struct stat file_desc_obj;
+
+	getcwd(cwd,PWD_SIZE);
+
+	DIR *current_dir=opendir(cwd);
+	struct dirent *cascade_dir=NULL;
+
+	if(current_dir==NULL){
+		printf("Error while opening current dir for parsing...");
+		perror("opendir");
+		return;
+	}
+	printf("------------------------------------------------\n");
+
+	while((cascade_dir=readdir(current_dir)))
+	{
+		if(cascade_dir->d_type == DT_DIR)
+		{
+			strcpy(channel_path,cwd);
+			strcat(channel_path,"/");
+			strcat(channel_path,cascade_dir->d_name);
+			strcat(channel_path,"/");
+			strcat(channel_path,"treasure");
+ 
+			if(stat(channel_path,&file_desc_obj)!=-1)
+			{
+				is_hunts=1;
+				printf("Hunt %s with %ld treasures\n",cascade_dir->d_name,file_desc_obj.st_size/120);
+			}
+		}
+	}
+
+	if(!is_hunts)
+		printf("No hunts...No money...\n");
+
+	printf("------------------------------------------------\n");
 	
-	printf("miaumiau\n");
+	if(closedir(current_dir)==-1)
+	{	
+		printf("There was an error whilst closing the dir file...\n");
+		perror("closedir");
+	}
 }
 
 void list_treasure(int num)
@@ -77,9 +121,9 @@ void view_treasure(int num)
 
 void stop_monitor(int num)
 {
-	wait();
 	sleep(4);
 	printf("Monitor clossing...\n");
+	kill(getppid(),SIGUSR2);
 	exit(0);
 }
 
@@ -126,18 +170,26 @@ void send_stop_monitor(int c_pid)
 }
 
 //function that will be used only as a handler for a signal that is sent from to monitor telling main to regain focus from stdin
-void return_focus()
+void return_focus(int num)
 {
 	return;
 }
 
+void return_cmd_input(int num)
+{
+	monitor_on=0;
+}
+
+
 void arm_hub_h2h()
 {
-	struct sigaction await_focus_sa;
+	struct sigaction await_focus_sa,await_normal_input_sa;
 
 	await_focus_sa.sa_handler = return_focus;
+	await_normal_input_sa.sa_handler = return_cmd_input;
 
 	sigaction(SIGUSR1,&await_focus_sa,NULL);
+	sigaction(SIGUSR2,&await_normal_input_sa,NULL);
 }
 
 int main(int argc, char **argv)
@@ -174,8 +226,14 @@ int main(int argc, char **argv)
 			getcwd(cwd,PWD_SIZE);
 			printf("%s#",cwd);
 
-			scanf("%512s",user_cmd);
-			while((buffer_headache=getchar())!='\n'){}
+			fgets(user_cmd,513,stdin);
+			user_cmd[strlen(user_cmd)-1]='\0';
+
+			if(monitor_on==2)
+			{
+				printf("Error:Input cannot be processed whilst monitor is closing...\n");
+				continue;
+			}
 				
 			for(unsigned int i=0;i<6;i++)
 			{
@@ -184,11 +242,11 @@ int main(int argc, char **argv)
 					using_hub_cmd = 1;
 					switch(i){
 						case 0: {if(!monitor_on) {slave_pid=fork(); if(!slave_pid) arm_monitor_h2h(); else if(slave_pid!=-1){monitor_on=1; arm_hub_h2h(); }} else printf("Monitor already on...\n"); break; }
-						case 1: {if(monitor_on) send_view_hunts(slave_pid); else printf("The monitor has to be started before using any hub function...\n"); break;}
+						case 1: {if(monitor_on) {send_view_hunts(slave_pid); sleep(1);} else printf("The monitor has to be started before using any hub function...\n"); break;}
 						case 2: {if(monitor_on) {send_list_treasures(slave_pid); pause();} else printf("The monitor has to be started before using any hub function...\n"); break;}
 						case 3: {if(monitor_on) {send_view_treasure(slave_pid); pause();} else printf("The monitor has to be started before using any hub function...\n"); break;}
-						case 4: {if(monitor_on) {monitor_on=0; send_stop_monitor(slave_pid);} else printf("The monitor has to be started before using any hub function...\n"); break; }
-						case 5: {if(monitor_on) printf("Monitor process forcefully stopped. Errors may have occured!\n"); monitor_on=0; kill(slave_pid,SIGKILL); printf("gata\n"); exit(0); break; }
+						case 4: {if(monitor_on) {monitor_on=2; send_stop_monitor(slave_pid);} else printf("The monitor has to be started before using any hub function...\n"); break; }
+						case 5: {if(monitor_on) printf("Monitor process forcefully stopped. Errors may have occured!\n"); monitor_on=0; kill(slave_pid,SIGKILL); exit(0); break; }
 					}
 					break;
 				}
