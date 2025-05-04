@@ -72,7 +72,7 @@ void list_treasure(int num)
 
 	char process_cmd[127]="./";
 	char hunt_id[50]="";
-	char buffer_headache=0;	
+	char buffer_headache=0;
 
 	printf("Input hunt from which to list treasures:");
 	scanf("%49s",hunt_id);
@@ -159,13 +159,10 @@ void send_view_treasure(int c_pid)
 
 void send_stop_monitor(int c_pid)
 {
-	int status,zombie_pid=0;
-
-	kill(c_pid,SIGUSR2);
-	
-	zombie_pid=wait(&status);
-	
-	if(zombie_pid==-1)
+	int status=0,zombie_pid=0;
+	kill(c_pid,SIGUSR2);	
+	zombie_pid=wait(&status); 
+	if(zombie_pid==-1) 
 		errno=status|0x0C00;
 }
 
@@ -194,12 +191,13 @@ void arm_hub_h2h()
 
 int main(int argc, char **argv)
 {
-	printf("Proces barbat parinte:%d\n",getpid());
 	char cwd[PWD_SIZE]="";
 	char *cmds[]={"start_monitor","list_hunts","list_treasures","view_treasure","stop_monitor","exit"};
 	char user_cmd[513]="";
-	char using_hub_cmd=0,buffer_headache=0;
+	char using_hub_cmd=0;
 	int slave_pid = 1;
+
+	printf("Starting hub subroutine. Listing commands bellow. If a command that is not listed will be sent, it will be proccesed by the os shell. Usage on windows will result in errors:\n1.start_monitor - start the monitor subroutine\n2.list_hunts - lists all the hunts in the current working directory\n3.list_treasures - same as view hunt in treasure_manager\n4.view_treasure - same as view_treasure in treasure_manager\n5.stop_monitor - stops the monito subroutine if one was created\n6.exit - forcefully stops any other subprocces and exits the hub process\n\n");
 
 	while(1)
 	{
@@ -227,7 +225,6 @@ int main(int argc, char **argv)
 			printf("%s#",cwd);
 
 			fgets(user_cmd,513,stdin);
-			user_cmd[strlen(user_cmd)-1]='\0';
 
 			if(monitor_on==2)
 			{
