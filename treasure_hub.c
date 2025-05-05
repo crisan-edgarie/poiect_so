@@ -159,11 +159,17 @@ void send_view_treasure(int c_pid)
 
 void send_stop_monitor(int c_pid)
 {
-	int status=0,zombie_pid=0;
+	
 	kill(c_pid,SIGUSR2);	
-	zombie_pid=wait(&status); 
-	if(zombie_pid==-1) 
-		errno=status|0x0C00;
+
+	int pre_cpid=fork();
+
+	if(pre_cpid==0){
+		int status=0,zombie_pid=0;
+		zombie_pid=waitpid(c_pid,&status,0); 
+		if(zombie_pid==-1) 
+			errno=status|0x0C00;
+	}
 }
 
 //function that will be used only as a handler for a signal that is sent from to monitor telling main to regain focus from stdin
@@ -228,7 +234,15 @@ int main(int argc, char **argv)
 
 			if(monitor_on==2)
 			{
+				int status=0, zombie_pid=0;
+
 				printf("Error:Input cannot be processed whilst monitor is closing...\n");
+				while(monitor_on!=0) {}
+
+				zombie_pid=wait(&status);
+ 
+				if(zombie_pid==-1) 
+					errno=status|0x0C00;
 				continue;
 			}
 				
