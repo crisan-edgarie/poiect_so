@@ -7,14 +7,17 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <dirent.h>
+#include <fcntl.h>
 
 #define PWD_SIZE 257
 #define SIG_C_EVENT_1 SIGUSR1+24 //view hunts sig
 #define SIG_C_EVENT_2 SIGUSR1+25 //list treasures sig
 #define SIG_C_EVENT_3 SIGUSR1+26 //view treasure sig
 #define SIG_C_EVENT_4 SIGUSR1+27 //do score hunt
+#define SIG_C_EVENT_5 SIGUSR1+30 //stop reading from pipe
 
 unsigned int monitor_on=0;
+unsigned int read_pipe=0;
 
 void view_hunts(int num)
 {
@@ -51,6 +54,7 @@ void view_hunts(int num)
 			{
 				is_hunts=1;
 				printf("Hunt %s with %ld treasures\n",cascade_dir->d_name,file_desc_obj.st_size/120);
+				fflush(stdout);
 			}
 		}
 	}
@@ -65,6 +69,8 @@ void view_hunts(int num)
 		printf("There was an error whilst closing the dir file...\n");
 		perror("closedir");
 	}
+
+	kill(getppid(),SIG_C_EVENT_5);
 }
 
 void list_treasure(int num)
@@ -87,6 +93,8 @@ void list_treasure(int num)
 
 	usleep(150);
 	fclose(fin);
+
+	kill(getppid(),SIG_C_EVENT_5);
 
 	kill(getppid(),SIGUSR1);
 	
@@ -116,6 +124,8 @@ void view_treasure(int num)
 	usleep(150);
 
 	fclose(fin);
+
+	kill(getppid(),SIG_C_EVENT_5);
 
 	kill(getppid(),SIGUSR1);
 }
@@ -178,14 +188,16 @@ void score_hunts(int num)
 		printf("There was an error whilst closing the dir file...\n");
 		perror("closedir");
 	}
+	kill(getppid(),SIG_C_EVENT_5);
 
 	kill(getppid(),SIGUSR1);
 }
 
 void stop_monitor(int num)
 {
-	sleep(4);
 	printf("Monitor clossing...\n");
+	kill(getppid(),SIG_C_EVENT_5);
+	sleep(4);
 	kill(getppid(),SIGUSR2);
 	exit(0);
 }
@@ -246,7 +258,7 @@ void send_view_treasure(int c_pid)
 	scanf("%3s",id);
 	while((buffer_headache=getchar())!='\n') {}
 
-	fprintf(fout,"%s\0%s",hunt,id);
+	fprintf(fout,"%s\n%s",hunt,id);
 
 	fclose(fout);
 
@@ -284,16 +296,23 @@ void return_cmd_input(int num)
 	monitor_on=0;
 }
 
+void stop_reading_pipe(int num)
+{
+	read_pipe=0;
+}
+
 
 void arm_hub_h2h()
 {
-	struct sigaction await_focus_sa,await_normal_input_sa;
+	struct sigaction await_focus_sa,await_normal_input_sa, stop_pipe_sa;
 
 	await_focus_sa.sa_handler = return_focus;
 	await_normal_input_sa.sa_handler = return_cmd_input;
+	stop_pipe_sa.sa_handler = stop_reading_pipe;
 
 	sigaction(SIGUSR1,&await_focus_sa,NULL);
 	sigaction(SIGUSR2,&await_normal_input_sa,NULL);
+	sigaction(SIG_C_EVENT_5,&stop_pipe_sa,NULL);
 }
 
 int main(int argc, char **argv)
@@ -301,21 +320,33 @@ int main(int argc, char **argv)
 	char cwd[PWD_SIZE]="";
 	char *cmds[]={"start_monitor","list_hunts","list_treasures","view_treasure","score_hunts","stop_monitor","exit"};
 	char user_cmd[513]="";
+	char monitor_out[PIPE_BUF+1]="";
 	char using_hub_cmd=0;
 	int slave_pid = 1;
+	int pipe_status_flags=0;
+	int pipe_ref[2];
+
+	if(pipe(pipe_ref)<0)
+	{
+		perror("pipe");
+		exit(-13);
+	}
+
+	pipe_status_flags=fcntl(pipe_ref[0],F_GETFL);
+	fcntl(pipe_ref[0],F_SETFL,pipe_status_flags | O_NONBLOCK);
 
 	printf("Starting hub subroutine. Listing commands bellow. If a command that is not listed will be sent, it will be proccesed by the os shell. Usage on windows will result in errors:\n1.start_monitor - start the monitor subroutine\n2.list_hunts - lists all the hunts in the current working directory\n3.list_treasures - same as view hunt in treasure_manager\n4.view_treasure - same as view_treasure in treasure_manager\n5.score_hunts - shows the scores for all hunts int he current waorking directory\n6.stop_monitor - stops the monito subroutine if one was created\n7.exit - forcefully stops any other subprocces and exits the hub process\n\n");
 
 	while(1)
 	{
-	
+
 	switch(slave_pid){
-		
+
 		case -1:
 		{
 			perror("Error while creating slave process:");
 			exit(-1);
-			break;		
+			break;
 		}
 
 		case 0:
@@ -325,7 +356,7 @@ int main(int argc, char **argv)
 		}
 
 		default:
-		{	
+		{
 			using_hub_cmd=0;
 			//recreating unix "gui" basically not restricting any call to any unix functionality whilst treasure_hub runs
 			getcwd(cwd,PWD_SIZE);
@@ -348,25 +379,38 @@ int main(int argc, char **argv)
 				continue;
 			}
 				
-			for(unsigned int i=0;i<7;i++)
+			for(unsigned short int i=0;i<7;i++)
 			{
 				if(strstr(user_cmd,cmds[i]))
 				{
 					using_hub_cmd = 1;
 					switch(i){
-						case 0: {if(!monitor_on) {slave_pid=fork(); if(!slave_pid) arm_monitor_h2h(); else if(slave_pid!=-1){monitor_on=1; arm_hub_h2h(); }} else printf("Monitor already on...\n"); break; }
-						case 1: {if(monitor_on) {send_view_hunts(slave_pid); sleep(1);} else printf("The monitor has to be started before using any hub function...\n"); break;}
-						case 2: {if(monitor_on) {send_list_treasures(slave_pid); pause();} else printf("The monitor has to be started before using any hub function...\n"); break;}
-						case 3: {if(monitor_on) {send_view_treasure(slave_pid); pause();} else printf("The monitor has to be started before using any hub function...\n"); break;}
-						case 4: {if(monitor_on) {send_score_hunts(slave_pid); pause();} else printf("The monitor has to be started before using any hub function...\n"); break;}
-						case 5: {if(monitor_on) {monitor_on=2; send_stop_monitor(slave_pid);} else printf("The monitor has to be started before using any hub function...\n"); break; }
-						case 6: {if(monitor_on) printf("Monitor process forcefully stopped. Errors may have occured!\n"); monitor_on=0; kill(slave_pid,SIGKILL); exit(0); break; }
+						case 0: {if(!monitor_on) {slave_pid=fork(); if(!slave_pid){ arm_monitor_h2h(); close(pipe_ref[0]); dup2(pipe_ref[1],STDOUT_FILENO); close(pipe_ref[1]);} else if(slave_pid!=-1){monitor_on=1; arm_hub_h2h(); close(pipe_ref[1]);}} else printf("Monitor already on...\n"); break; }
+						case 1: {if(monitor_on) {send_view_hunts(slave_pid); read_pipe=1;} else printf("The monitor has to be started before using any hub function...\n"); break;}
+						case 2: {if(monitor_on) {send_list_treasures(slave_pid); read_pipe=1;} else printf("The monitor has to be started before using any hub function...\n"); break;}
+						case 3: {if(monitor_on) {send_view_treasure(slave_pid); read_pipe=1;} else printf("The monitor has to be started before using any hub function...\n"); break;}
+						case 4: {if(monitor_on) {send_score_hunts(slave_pid); read_pipe=1;} else printf("The monitor has to be started before using any hub function...\n"); break;}
+						case 5: {if(monitor_on) {monitor_on=2; send_stop_monitor(slave_pid); read_pipe=1;} else printf("The monitor has to be started before using any hub function...\n"); break; }
+						case 6: {if(monitor_on) printf("Monitor process forcefully stopped. Errors may have occured!\n"); monitor_on=0; close(pipe_ref[0]); kill(slave_pid,SIGKILL); exit(0); break; }
 					}
 					break;
 				}
 			}
 			if(!using_hub_cmd)
-				system((const char *)user_cmd);				
+				system((const char *)user_cmd);
+			else
+			{
+				while(read_pipe)
+				{
+
+						memset(monitor_out,0, PIPE_BUF+1);
+						switch(read(pipe_ref[0],monitor_out,PIPE_BUF)){
+							case -1:{ if(errno==EAGAIN) continue; else {perror("pipe read"); exit(-1);} break; }
+							default:{ printf("%s",monitor_out); break; }
+
+						}
+				}
+			}
 		}
 	}
 	}
